@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>test</title>
+        <style type="text/css" media="screen">
+         #canvas {
+             float: left;
+             height: 300px;
+             width: 800px;
+             border: 1px solid #666;
+         }
+
+         .data {
+             float: left;
+             margin-left: 10px;
+         }
+         .data td, .data th {
+             text-align: left;
+         }
+        </style>
+    </head>
+    <body>
+
+        <canvas id="canvas" width="800" height="300"></canvas>
+        <table class="data">
+            <thead>
+                <tr><th>Key</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>mousex</td><td id="mousex">0</td></tr>
+                <tr><td>frequency</td><td id="frequency"></td></tr>
+                <tr><td>audioContext sampleRate</td><td id="audioCtxSampleRate">0</td></tr>
+            </tbody>
+        </table>
+
+        <div style="width: 100%; float: left;">
+            <input style="width: 800px;" id="osc_freq" type="range" value="0.1" max="20000" min="0" />
+            <span id="osc_freq_out"></span>
+            <select id="osc_type">
+                <option selected="selected">sine</option>
+                <option>square</option>
+                <option>sawtooth</option>
+                <option>triangle</option>
+            </select>
+        </div>
+
+        <script type="text/javascript">
+         "use strict";
+         var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+         // create Oscillator and gain node
+         var oscillator = audioContext.createOscillator();
+         var osc_freq = 440;
+         var gainNode = audioContext.createGain();
+         oscillator.connect(gainNode);
+         gainNode.connect(audioContext.destination);
+         oscillator.type = 'sine';
+         oscillator.frequency.value = osc_freq; // value in hertz
+         oscillator.detune.value = 100; // value in cents
+         oscillator.start(0);
+         gainNode.gain.value = 0.05;
+
+         // hack
+         var osc_freq_elem = document.getElementById('osc_freq');
+         osc_freq_elem.value = osc_freq;
+         var osc_freq_out_elem = document.getElementById('osc_freq_out');
+         var osc_type_elem = document.getElementById("osc_type");
+         osc_freq_elem.addEventListener('input', updateCurrentOsc, false);
+         osc_freq_elem.addEventListener('change', updateCurrentOsc, false);
+         osc_type.addEventListener('change', updateCurrentOsc, false);
+
+         function updateCurrentOsc(){
+             osc_freq_out_elem.innerText = osc_freq_elem.value;
+             oscillator.frequency.value = osc_freq_elem.value;
+             oscillator.type = osc_type_elem.options[osc_type_elem.selectedIndex].value;
+         }
+
+         // end hack
+
+         var canvas = document.getElementById("canvas");
+         var ctx = canvas.getContext("2d");
+         var xMax = canvas.width;
+         var yMax = canvas.height;
+
+         // setup audio listening
+
+         var audioContext;
+         var analyser;
+         var microphone;
+         var jsNode;
+         var current = null;
+         var sampleRate = 0;
+         var fftSize = 2048;
+
+         function successCallback(stream) {
+             //console.log(audioContext.sampleRate);
+             sampleRate = audioContext.sampleRate;
+             document.getElementById("audioCtxSampleRate").innerText = sampleRate;
+
+             analyser = audioContext.createAnalyser();
+             microphone = audioContext.createMediaStreamSource(stream);
+             jsNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+             analyser.smoothingTimeConstant = 0.3;
+             analyser.fftSize = fftSize;
+
+             microphone.connect(analyser);
+             analyser.connect(jsNode);
+             jsNode.connect(audioContext.destination);
+             current = new Uint8Array(analyser.frequencyBinCount);
+         }
+
+         function drawAudioData(){
+             if(!analyser){ return; }
+             analyser.getByteFrequencyData(current);
+
+             ctx.beginPath();
+             ctx.strokeStyle = "#000";
+             for (var i = 0, ii = current.length; i < ii; i++) {
+                 ctx.lineTo(i,yMax - current[i]);
+             }
+             ctx.stroke();
+             ctx.closePath();
+         }
+
+         function errorCallback(err) {
+             console.log("The following error occurred: ", err);
+         }
+
+         navigator.webkitGetUserMedia( {audio:true}, successCallback, errorCallback );
+
+         // end setup audio listening
+
+         var mousexTd = document.getElementById("mousex");
+         var frequency = document.getElementById("frequency");
+
+         var mousex = 0;
+         var mousey = 0;
+         canvas.addEventListener("mousemove", (e) => {
+             mousex = e.offsetX;
+             mousey = e.offsetY;
+             mousexTd.innerText = mousex + " px";
+             frequency.innerText = e.offsetX * (sampleRate/fftSize) + " Hz";
+         });
+
+         // drawing loop
+         (function draw(){
+             // clear everything
+             ctx.clearRect(0, 0, xMax, yMax);
+
+             // draw horizontal line on mouse x coordinate
+             drawLine(mousex, 0, mousex, yMax);
+
+             drawAudioData();
+
+             window.requestAnimationFrame(draw);
+         })();
+
+         function drawLine(x, y, x1, y1){
+             ctx.beginPath();
+             ctx.lineWidth = "1px";
+             ctx.strokeStyle = "#aaa";
+             ctx.moveTo(x, y);
+             ctx.lineTo(x1, y1);
+             ctx.stroke();
+             ctx.closePath();
+         }
+
+        </script>
+    </body>
+</html>
